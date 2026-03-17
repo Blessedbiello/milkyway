@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-purple: #9945FF;
+  --color-green: #14F195;
+  --color-cyan: #00D1FF;
+  --color-pink: #FB47EC;
+  --color-surface-0: #09090b;
+  --color-surface-1: #0f0f14;
+  --color-surface-2: #16161d;
+  --color-surface-3: #1c1c26;
+  --color-surface-4: #242430;
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    border-color: theme("colors.border.DEFAULT");
+  }
+
+  body {
+    @apply bg-surface-0 text-zinc-100 antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(153, 69, 255, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 50%, rgba(20, 241, 149, 0.03), transparent);
+    background-attachment: fixed;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(153, 69, 255, 0.3);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(153, 69, 255, 0.5);
+  }
+}
+
+@layer components {
+  .glass {
+    @apply border border-zinc-800/60 bg-zinc-900/40 backdrop-blur-xl;
+  }
+
+  .glass-hover {
+    @apply transition-all duration-300 hover:border-solana-purple/30 hover:shadow-glow;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-solana bg-clip-text text-transparent;
+  }
+
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(153, 69, 255, 0.4), rgba(20, 241, 149, 0.4));
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    pointer-events: none;
+  }
+
+  .shimmer-bg {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(153, 69, 255, 0.05) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  .stat-value {
+    @apply text-3xl font-bold tracking-tight;
+  }
+
+  .stat-label {
+    @apply text-sm font-medium text-zinc-400;
+  }
+
+  .page-header {
+    @apply text-2xl font-bold tracking-tight text-white;
+  }
+
+  .page-description {
+    @apply text-sm text-zinc-400;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
