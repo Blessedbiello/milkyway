@@ -38,7 +38,6 @@ function makeNetwork(opts: {
   const services: Service[] = opts.services ?? [
     { id: 0, attackThreshold: 0.5, attackPrize: 200, totalAllocated: numValidators * stake },
     { id: 1, attackThreshold: 0.5, attackPrize: 200, totalAllocated: numValidators * stake },
-    { id: 2, attackThreshold: 0.5, attackPrize: 200, totalAllocated: 0 },
   ];
 
   return new RestakingNetwork(validators, services);
@@ -189,12 +188,13 @@ describe("checkNetworkSecurity", () => {
       services: [
         { id: 0, attackThreshold: 0.5, attackPrize: 200, totalAllocated: 1000 },
         { id: 1, attackThreshold: 0.5, attackPrize: 200, totalAllocated: 1000 },
-        { id: 2, attackThreshold: 0.5, attackPrize: 200, totalAllocated: 0 },
       ],
     });
     const result = checkNetworkSecurity(network);
     expect(result.secure).toBe(true);
-    expect(result.securityScore).toBe(100);
+    // Worst case: attack both services. cost=1000, prize=400, ratio=2.5
+    // score = min(100, (2.5 - 1) * 50) = 75
+    expect(result.securityScore).toBe(75);
   });
 
   it("returns score 0 when attack is free (cost=0, prize>0)", () => {
@@ -322,9 +322,17 @@ describe("checkRobustness", () => {
   });
 
   it("returns a low minimumBudgetFraction for an insecure network", () => {
-    // Prize massively exceeds any possible attack cost.
+    // 100 validators with stake=100 but only 1 allocated to the service with stake=10.
+    // Total stake = 10000, attack cost = 10, budget = β * 10000.
+    // Attack possible when β * 10000 >= 10, i.e. β >= 0.001. Very low fraction.
     const validators: Validator[] = [
       { id: 0, stake: 10, effectiveStake: 10, allocations: new Map([[0, 10]]) },
+      ...Array.from({ length: 99 }, (_, i) => ({
+        id: i + 1,
+        stake: 100,
+        effectiveStake: 100,
+        allocations: new Map<number, number>(),
+      })),
     ];
     const services: Service[] = [
       { id: 0, attackThreshold: 0.5, attackPrize: 1_000_000, totalAllocated: 10 },
@@ -332,7 +340,7 @@ describe("checkRobustness", () => {
     const network = new RestakingNetwork(validators, services);
     const result = checkRobustness(network);
     expect(result.robust).toBe(false);
-    expect(result.minimumBudgetFraction).toBeLessThan(0.5);
+    expect(result.minimumBudgetFraction).toBeLessThan(0.01);
   });
 });
 
