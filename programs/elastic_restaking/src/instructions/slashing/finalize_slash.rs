@@ -23,7 +23,7 @@ pub struct FinalizeSlash<'info> {
         seeds = [NETWORK_CONFIG_SEED],
         bump = network_config.bump,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         mut,
@@ -32,14 +32,14 @@ pub struct FinalizeSlash<'info> {
         constraint = !slash_proposal.is_vetoed @ ElasticRestakingError::SlashProposalAlreadyVetoed,
         constraint = !slash_proposal.is_finalized @ ElasticRestakingError::SlashProposalAlreadyFinalized,
     )]
-    pub slash_proposal: Account<'info, SlashProposal>,
+    pub slash_proposal: Box<Account<'info, SlashProposal>>,
 
     #[account(
         mut,
         seeds = [SERVICE_SEED, &slash_proposal.service_id.to_le_bytes()],
         bump = service.bump,
     )]
-    pub service: Account<'info, ServiceState>,
+    pub service: Box<Account<'info, ServiceState>>,
 
     #[account(
         init,
@@ -48,7 +48,7 @@ pub struct FinalizeSlash<'info> {
         seeds = [SLASH_RECORD_SEED, &slash_proposal.proposal_id.to_le_bytes()],
         bump,
     )]
-    pub slash_record: Account<'info, SlashRecord>,
+    pub slash_record: Box<Account<'info, SlashRecord>>,
 
     #[account(
         mut,

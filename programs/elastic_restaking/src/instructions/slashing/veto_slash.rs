@@ -16,7 +16,7 @@ pub struct VetoSlash<'info> {
         bump = network_config.bump,
         constraint = authority.key() == network_config.authority @ ElasticRestakingError::Unauthorized,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         mut,
@@ -25,14 +25,14 @@ pub struct VetoSlash<'info> {
         constraint = !slash_proposal.is_vetoed @ ElasticRestakingError::SlashProposalAlreadyVetoed,
         constraint = !slash_proposal.is_finalized @ ElasticRestakingError::SlashProposalAlreadyFinalized,
     )]
-    pub slash_proposal: Account<'info, SlashProposal>,
+    pub slash_proposal: Box<Account<'info, SlashProposal>>,
 
     /// The service targeted by this proposal, used for event emission.
     #[account(
         seeds = [SERVICE_SEED, &slash_proposal.service_id.to_le_bytes()],
         bump = service.bump,
     )]
-    pub service: Account<'info, ServiceState>,
+    pub service: Box<Account<'info, ServiceState>>,
 }
 
 pub fn handler(ctx: Context<VetoSlash>) -> Result<()> {

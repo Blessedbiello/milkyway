@@ -17,7 +17,7 @@ pub struct DeallocateStake<'info> {
         seeds = [NETWORK_CONFIG_SEED],
         bump = network_config.bump,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         mut,
@@ -25,14 +25,14 @@ pub struct DeallocateStake<'info> {
         bump = validator_state.bump,
         has_one = authority @ ElasticRestakingError::Unauthorized,
     )]
-    pub validator_state: Account<'info, ValidatorState>,
+    pub validator_state: Box<Account<'info, ValidatorState>>,
 
     #[account(
         mut,
         seeds = [SERVICE_SEED, &service_id.to_le_bytes()],
         bump = service.bump,
     )]
-    pub service: Account<'info, ServiceState>,
+    pub service: Box<Account<'info, ServiceState>>,
 
     #[account(
         mut,

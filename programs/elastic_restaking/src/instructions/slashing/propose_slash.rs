@@ -19,7 +19,7 @@ pub struct ProposeSlash<'info> {
         bump = network_config.bump,
         constraint = proposer.key() == network_config.authority @ ElasticRestakingError::Unauthorized,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         seeds = [SERVICE_SEED, &service_id.to_le_bytes()],
@@ -28,7 +28,7 @@ pub struct ProposeSlash<'info> {
         constraint = !service.is_slashed @ ElasticRestakingError::ServiceAlreadySlashed,
         constraint = !service.is_base_service @ ElasticRestakingError::ServiceIsBaseService,
     )]
-    pub service: Account<'info, ServiceState>,
+    pub service: Box<Account<'info, ServiceState>>,
 
     #[account(
         init,

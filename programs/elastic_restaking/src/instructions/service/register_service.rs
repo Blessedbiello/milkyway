@@ -25,7 +25,7 @@ pub struct RegisterService<'info> {
         seeds = [NETWORK_CONFIG_SEED],
         bump = network_config.bump,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         init,
@@ -34,7 +34,7 @@ pub struct RegisterService<'info> {
         seeds = [SERVICE_SEED, &network_config.service_count.to_le_bytes()],
         bump,
     )]
-    pub service: Account<'info, ServiceState>,
+    pub service: Box<Account<'info, ServiceState>>,
 
     /// Must match network_config.reward_mint.
     pub reward_mint: Account<'info, Mint>,

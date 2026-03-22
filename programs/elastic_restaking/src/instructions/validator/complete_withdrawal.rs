@@ -18,7 +18,7 @@ pub struct CompleteWithdrawal<'info> {
         seeds = [NETWORK_CONFIG_SEED],
         bump = network_config.bump,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         mut,
@@ -26,7 +26,7 @@ pub struct CompleteWithdrawal<'info> {
         bump = validator_state.bump,
         has_one = authority @ ElasticRestakingError::Unauthorized,
     )]
-    pub validator_state: Account<'info, ValidatorState>,
+    pub validator_state: Box<Account<'info, ValidatorState>>,
 
     #[account(
         mut,

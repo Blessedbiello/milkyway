@@ -117,14 +117,14 @@ pub fn handler(ctx: Context<UpdateNetworkConfig>, params: UpdateConfigParams) ->
 
     if let Some(epoch_duration) = params.epoch_duration {
         require!(
-            epoch_duration > 0,
+            epoch_duration >= 0,
             ElasticRestakingError::InvalidConfiguration
         );
     }
 
     if let Some(slash_dispute_window) = params.slash_dispute_window {
         require!(
-            slash_dispute_window > 0,
+            slash_dispute_window >= 0,
             ElasticRestakingError::InvalidConfiguration
         );
     }

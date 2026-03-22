@@ -801,8 +801,8 @@ describe("elastic-restaking", () => {
         .rpc();
 
       const service = await program.account.serviceState.fetch(servicePda);
-      // Alpha now has validator-0 (80M) + validator-1 (80M) = 160M total.
-      expect(service.totalAllocated.toNumber()).to.equal(160_000_000);
+      // Alpha now has validator-0 (80M) + validator-2 (100M) + validator-1 (80M) = 260M total.
+      expect(service.totalAllocated.toNumber()).to.equal(260_000_000);
     });
   });
 

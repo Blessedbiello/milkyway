@@ -19,7 +19,7 @@ pub struct AllocateStake<'info> {
         bump = network_config.bump,
         constraint = !network_config.is_paused @ ElasticRestakingError::NetworkPaused,
     )]
-    pub network_config: Account<'info, NetworkConfig>,
+    pub network_config: Box<Account<'info, NetworkConfig>>,
 
     #[account(
         mut,
@@ -27,7 +27,7 @@ pub struct AllocateStake<'info> {
         bump = validator_state.bump,
         has_one = authority @ ElasticRestakingError::Unauthorized,
     )]
-    pub validator_state: Account<'info, ValidatorState>,
+    pub validator_state: Box<Account<'info, ValidatorState>>,
 
     #[account(
         mut,
@@ -36,7 +36,7 @@ pub struct AllocateStake<'info> {
         constraint = service.is_active @ ElasticRestakingError::ServiceNotActive,
         constraint = !service.is_slashed @ ElasticRestakingError::ServiceAlreadySlashed,
     )]
-    pub service: Account<'info, ServiceState>,
+    pub service: Box<Account<'info, ServiceState>>,
 
     #[account(
         init_if_needed,
