@@ -10,3 +10,5 @@ dist
 .turbo
 .env
 .env.local
+deployment.json
+seed-info.json
