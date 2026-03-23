@@ -32,13 +32,13 @@ import {
   generateFigure5Data,
   generateFigure6Data,
   computeOptimalDegree,
-} from "../../../../packages/analyzer/src/optimal-degree";
+} from "@/lib/analyzer/optimal-degree";
 import type {
   Figure3Point,
   Figure5Point,
   Figure6Point,
   OptimalDegreeResult,
-} from "../../../../packages/analyzer/src/optimal-degree";
+} from "@/lib/analyzer/optimal-degree";
 
 interface SliderParam {
   label: string;
