@@ -42,8 +42,8 @@ export function Navbar() {
             <Zap className="h-4 w-4 text-white" />
           </div>
           <span className="text-base font-bold tracking-tight text-white group-hover:text-solana-purple transition-colors">
-            Elastic
-            <span className="text-solana-green">Restaking</span>
+            Milky
+            <span className="text-solana-green">Way</span>
           </span>
         </Link>
 

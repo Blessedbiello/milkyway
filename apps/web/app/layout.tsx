@@ -18,11 +18,11 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    template: "%s | Elastic Restaking",
-    default: "Elastic Restaking Protocol",
+    template: "%s | Milky Way",
+    default: "Milky Way Protocol",
   },
   description:
-    "Elastic Restaking Networks on Solana - Secure, scalable shared security through restaking",
+    "Milky Way — Elastic Restaking Networks on Solana. Secure, scalable shared security through restaking.",
   keywords: ["solana", "restaking", "defi", "shared security", "validators"],
 };
 

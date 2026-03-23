@@ -144,7 +144,7 @@ export default function DashboardPage() {
             <Zap className="h-5 w-5 text-white" />
           </div>
           <div className="flex-1">
-            <h1 className="page-header">Elastic Restaking Protocol</h1>
+            <h1 className="page-header">Milky Way Protocol</h1>
             <p className="page-description">
               Shared security through elastic restaking on Solana
             </p>

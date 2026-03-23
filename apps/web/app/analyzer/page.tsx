@@ -232,7 +232,7 @@ export default function AnalyzerPage() {
           Security Analyzer
         </h1>
         <p className="page-description">
-          Interactive analysis of Elastic Restaking security properties from
+          Interactive analysis of Milky Way security properties from
           Bar-Zur & Eyal, ACM CCS &apos;25
         </p>
       </motion.div>
