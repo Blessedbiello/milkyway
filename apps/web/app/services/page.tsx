@@ -12,7 +12,11 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  Radio,
+  Database,
 } from "lucide-react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useServices } from "@/hooks/use-services";
 
 interface Service {
   id: number;
@@ -23,6 +27,7 @@ interface Service {
   allocated: string;
   validators: number;
   description: string;
+  onChainAddress?: string;
 }
 
 const mockServices: Service[] = [
@@ -130,6 +135,26 @@ const statusConfig = {
 };
 
 export default function ServicesPage() {
+  const { connected } = useWallet();
+  const { data: onChainServices, isLoading } = useServices();
+
+  const isLive = connected && !isLoading;
+  const onChainCount = onChainServices?.length ?? 0;
+
+  // Build a lookup from service index (0-based) to on-chain address
+  const onChainMap = new Map(
+    (onChainServices ?? []).map((s) => [s.id, s.address])
+  );
+
+  // Merge on-chain addresses into mock data (mock uses 1-based IDs, on-chain uses 0-based)
+  const services: Service[] = mockServices.map((s) => ({
+    ...s,
+    onChainAddress: onChainMap.get(s.id - 1), // service 1 -> PDA index 0
+  }));
+
+  const activeCount = services.filter((s) => s.status === "active").length;
+  const displayTotal = isLive && onChainCount > 0 ? onChainCount : services.length;
+
   return (
     <div className="space-y-8">
       <motion.div
@@ -142,10 +167,21 @@ export default function ServicesPage() {
             <Layers className="h-6 w-6 text-solana-green" />
             Service Registry
           </h1>
-          <p className="page-description">
-            {mockServices.length} services registered |{" "}
-            {mockServices.filter((s) => s.status === "active").length} active
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="page-description">
+              {displayTotal} services registered | {activeCount} active
+            </p>
+            {isLive && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="inline-flex items-center gap-1 rounded-full border border-solana-green/30 bg-solana-green/10 px-2 py-0.5 text-[10px] font-medium text-solana-green"
+              >
+                <Radio className="h-2.5 w-2.5 animate-pulse" />
+                {onChainCount} on-chain
+              </motion.span>
+            )}
+          </div>
         </div>
         <Button variant="primary" size="md">
           <Plus className="h-4 w-4" />
@@ -189,7 +225,7 @@ export default function ServicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/40">
-                {mockServices.map((service, i) => {
+                {services.map((service, i) => {
                   const status = statusConfig[service.status];
                   const StatusIcon = status.icon;
                   return (
@@ -213,6 +249,13 @@ export default function ServicesPage() {
                           <p className="text-xs text-zinc-500">
                             {service.description}
                           </p>
+                          {service.onChainAddress && (
+                            <p className="mt-0.5 flex items-center gap-1 text-[10px] font-mono text-solana-green/70">
+                              <Database className="h-2.5 w-2.5" />
+                              {service.onChainAddress.slice(0, 8)}...
+                              {service.onChainAddress.slice(-4)}
+                            </p>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
