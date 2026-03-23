@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Card, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -11,10 +11,34 @@ import {
   Shield,
   TrendingUp,
   AlertTriangle,
-  Zap,
   Activity,
   Settings2,
+  Loader2,
+  Zap,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+import {
+  generateFigure3Data,
+  generateFigure5Data,
+  generateFigure6Data,
+  computeOptimalDegree,
+} from "../../../../packages/analyzer/src/optimal-degree";
+import type {
+  Figure3Point,
+  Figure5Point,
+  Figure6Point,
+  OptimalDegreeResult,
+} from "../../../../packages/analyzer/src/optimal-degree";
 
 interface SliderParam {
   label: string;
@@ -29,8 +53,8 @@ interface SliderParam {
 
 const parameters: SliderParam[] = [
   {
-    label: "Number of Validators (n)",
-    key: "n",
+    label: "Validators (n)",
+    key: "numValidators",
     min: 5,
     max: 200,
     step: 5,
@@ -39,38 +63,28 @@ const parameters: SliderParam[] = [
     description: "Total validators in the network",
   },
   {
-    label: "Number of Services (m)",
-    key: "m",
-    min: 1,
+    label: "Services (m)",
+    key: "numServices",
+    min: 2,
     max: 50,
     step: 1,
-    defaultValue: 8,
+    defaultValue: 10,
     unit: "",
     description: "Total services requiring security",
   },
   {
-    label: "Target Degree (d*)",
-    key: "d_star",
-    min: 1,
-    max: 20,
-    step: 0.5,
-    defaultValue: 4,
-    unit: "",
-    description: "Optimal restaking degree for the network",
+    label: "Stake per Validator",
+    key: "stakePerValidator",
+    min: 100,
+    max: 50000,
+    step: 100,
+    defaultValue: 10000,
+    unit: " SOL",
+    description: "Stake each validator commits",
   },
   {
-    label: "Slash Fraction",
-    key: "slash_fraction",
-    min: 0.01,
-    max: 1.0,
-    step: 0.01,
-    defaultValue: 0.1,
-    unit: "",
-    description: "Fraction of stake slashed per violation",
-  },
-  {
-    label: "Security Threshold",
-    key: "threshold",
+    label: "Attack Threshold",
+    key: "attackThreshold",
     min: 1000,
     max: 100000,
     step: 1000,
@@ -79,67 +93,132 @@ const parameters: SliderParam[] = [
     description: "Minimum stake threshold per service",
   },
   {
-    label: "Veto Period (slots)",
-    key: "veto_period",
-    min: 100,
-    max: 50000,
-    step: 100,
-    defaultValue: 5000,
+    label: "Attack Prize",
+    key: "attackPrize",
+    min: 1000,
+    max: 200000,
+    step: 1000,
+    defaultValue: 50000,
+    unit: " SOL",
+    description: "Prize an attacker gains per service",
+  },
+  {
+    label: "Max Degree",
+    key: "maxDegree",
+    min: 2,
+    max: 30,
+    step: 1,
+    defaultValue: 10,
     unit: "",
-    description: "Slots before slash can be finalized",
+    description: "Maximum restaking degree to analyze",
   },
 ];
 
-const mockFigures = [
+interface ComputeResults {
+  figure3: Figure3Point[];
+  figure5: Figure5Point[];
+  figure6: Figure6Point[];
+  optimal: OptimalDegreeResult;
+}
+
+const figures = [
   {
     id: "fig3",
-    title: "Figure 3: Security vs Restaking Degree",
+    title: "Figure 3: Min Stake vs Restaking Degree",
+    short: "Figure 3",
     description:
-      "Shows how total network security scales with the restaking degree d*. Demonstrates the elastic security amplification effect.",
-    color: "text-solana-purple",
-  },
-  {
-    id: "fig4",
-    title: "Figure 4: Optimal d* vs Network Size",
-    description:
-      "Plots the optimal restaking degree as a function of the number of validators and services.",
-    color: "text-solana-green",
+      "Minimum per-validator stake for network security at each restaking degree. The interior minimum reveals the optimal degree d*.",
+    color: "text-purple-400",
   },
   {
     id: "fig5",
-    title: "Figure 5: Cascade Risk Analysis",
+    title: "Figure 5: Failure Threshold vs Degree",
+    short: "Figure 5",
     description:
-      "Visualizes the probability and magnitude of cascading slashing events under different network configurations.",
-    color: "text-amber-400",
+      "Fraction of total stake an attacker must spend to mount a profitable attack. Higher is more secure.",
+    color: "text-green-400",
   },
   {
     id: "fig6",
-    title: "Figure 6: Prize-Stake Equilibrium",
+    title: "Figure 6: Base Service Synergy",
+    short: "Figure 6",
     description:
-      "Displays the game-theoretic equilibrium between service prizes and validator stake allocations.",
-    color: "text-solana-cyan",
+      "Compares failure thresholds with and without a base service. Demonstrates the security amplification from adding a shared base layer.",
+    color: "text-cyan-400",
   },
 ];
+
+const chartColors = {
+  primary: "#a855f7",
+  secondary: "#22c55e",
+  tertiary: "#06b6d4",
+};
+
+const tooltipStyle = {
+  contentStyle: {
+    backgroundColor: "rgba(24, 24, 27, 0.95)",
+    border: "1px solid rgba(63, 63, 70, 0.5)",
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#d4d4d8",
+  },
+  labelStyle: { color: "#a1a1aa", fontWeight: 600 },
+};
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toFixed(n < 1 ? 4 : 1);
+}
 
 export default function AnalyzerPage() {
   const [params, setParams] = useState<Record<string, number>>(
     Object.fromEntries(parameters.map((p) => [p.key, p.defaultValue]))
   );
   const [activeFigure, setActiveFigure] = useState("fig3");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isComputing, setIsComputing] = useState(false);
+  const [results, setResults] = useState<ComputeResults | null>(null);
+  const [computeTime, setComputeTime] = useState<number | null>(null);
 
-  const handleAnalyze = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => setIsAnalyzing(false), 2000);
-  };
+  const handleCompute = useCallback(() => {
+    setIsComputing(true);
 
-  const securityScore = Math.min(
-    99,
-    60 +
-      params.d_star * 5 +
-      (params.n / params.m) * 0.5 -
-      params.slash_fraction * 10
-  );
+    // Use setTimeout to let the UI update with loading state before blocking
+    setTimeout(() => {
+      const start = performance.now();
+      try {
+        const baseParams = {
+          numValidators: params.numValidators,
+          numServices: params.numServices,
+          stakePerValidator: params.stakePerValidator,
+          attackThreshold: params.attackThreshold,
+          attackPrize: params.attackPrize,
+          maxDegree: params.maxDegree,
+        };
+
+        const figure3 = generateFigure3Data(baseParams);
+        const figure5 = generateFigure5Data(baseParams);
+        const figure6 = generateFigure6Data(baseParams);
+        const optimal = computeOptimalDegree(baseParams);
+
+        const elapsed = performance.now() - start;
+        setResults({ figure3, figure5, figure6, optimal });
+        setComputeTime(elapsed);
+      } catch (err) {
+        console.error("Computation error:", err);
+      } finally {
+        setIsComputing(false);
+      }
+    }, 16);
+  }, [params]);
+
+  const handleReset = useCallback(() => {
+    setParams(
+      Object.fromEntries(parameters.map((p) => [p.key, p.defaultValue]))
+    );
+    setResults(null);
+    setComputeTime(null);
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -153,8 +232,8 @@ export default function AnalyzerPage() {
           Security Analyzer
         </h1>
         <p className="page-description">
-          Analyze and simulate network security parameters from the Elastic
-          Restaking paper
+          Interactive analysis of Elastic Restaking security properties from
+          Bar-Zur & Eyal, ACM CCS &apos;25
         </p>
       </motion.div>
 
@@ -210,18 +289,18 @@ export default function AnalyzerPage() {
                 variant="primary"
                 size="md"
                 className="w-full"
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
+                onClick={handleCompute}
+                disabled={isComputing}
               >
-                {isAnalyzing ? (
+                {isComputing ? (
                   <>
-                    <Activity className="h-4 w-4 animate-pulse" />
-                    Analyzing...
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Computing...
                   </>
                 ) : (
                   <>
                     <Play className="h-4 w-4" />
-                    Analyze Current Network
+                    Compute Analysis
                   </>
                 )}
               </Button>
@@ -229,68 +308,104 @@ export default function AnalyzerPage() {
                 variant="secondary"
                 size="sm"
                 className="w-full"
-                onClick={() =>
-                  setParams(
-                    Object.fromEntries(
-                      parameters.map((p) => [p.key, p.defaultValue])
-                    )
-                  )
-                }
+                onClick={handleReset}
               >
                 Reset Defaults
               </Button>
+              {computeTime !== null && (
+                <p className="text-center text-[10px] text-zinc-600">
+                  Computed in {computeTime.toFixed(0)}ms
+                </p>
+              )}
             </div>
           </Card>
 
-          {/* Security Score */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card
-              className={cn(
-                "text-center",
-                securityScore >= 80
-                  ? "border-solana-green/20"
-                  : securityScore >= 60
-                  ? "border-amber-400/20"
-                  : "border-red-500/20"
-              )}
+          {/* Optimal Degree Display */}
+          {results && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
             >
-              <Shield
+              <Card className="border-solana-purple/20">
+                <Zap className="mx-auto mb-2 h-8 w-8 text-solana-purple" />
+                <p className="text-center text-xs font-medium text-zinc-400">
+                  Optimal Restaking Degree
+                </p>
+                <p className="text-center text-4xl font-bold text-white">
+                  d* = {results.optimal.optimalDegree}
+                </p>
+                <p className="mt-2 text-center text-xs text-zinc-500">
+                  Robustness at d*:{" "}
+                  <span className="font-mono text-solana-green">
+                    {formatNumber(results.optimal.robustnessAtOptimal)} SOL
+                  </span>
+                </p>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Security Score */}
+          {results && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <Card
                 className={cn(
-                  "mx-auto mb-2 h-8 w-8",
-                  securityScore >= 80
-                    ? "text-solana-green"
-                    : securityScore >= 60
-                    ? "text-amber-400"
-                    : "text-red-400"
+                  "text-center",
+                  results.optimal.robustnessAtOptimal >
+                    params.attackPrize * params.numServices
+                    ? "border-solana-green/20"
+                    : results.optimal.robustnessAtOptimal > params.attackPrize
+                    ? "border-amber-400/20"
+                    : "border-red-500/20"
                 )}
-              />
-              <p className="text-3xl font-bold text-white">
-                {securityScore.toFixed(1)}%
-              </p>
-              <p className="mt-1 text-xs text-zinc-500">
-                Network Security Score
-              </p>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
-                <motion.div
+              >
+                <Shield
                   className={cn(
-                    "h-full rounded-full",
-                    securityScore >= 80
-                      ? "bg-solana-green"
-                      : securityScore >= 60
-                      ? "bg-amber-400"
-                      : "bg-red-500"
+                    "mx-auto mb-2 h-8 w-8",
+                    results.optimal.robustnessAtOptimal >
+                      params.attackPrize * params.numServices
+                      ? "text-solana-green"
+                      : results.optimal.robustnessAtOptimal > params.attackPrize
+                      ? "text-amber-400"
+                      : "text-red-400"
                   )}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${securityScore}%` }}
-                  transition={{ duration: 1, ease: "easeOut" }}
                 />
-              </div>
-            </Card>
-          </motion.div>
+                <p className="text-xs font-medium text-zinc-400">
+                  Network Security
+                </p>
+                <p className="mt-1 text-sm text-zinc-300">
+                  {results.optimal.robustnessAtOptimal >
+                  params.attackPrize * params.numServices
+                    ? "Secure against all attack subsets"
+                    : results.optimal.robustnessAtOptimal > params.attackPrize
+                    ? "Secure against single-service attacks"
+                    : "Vulnerable - increase stake or reduce services"}
+                </p>
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                  <motion.div
+                    className={cn(
+                      "h-full rounded-full",
+                      results.optimal.robustnessAtOptimal >
+                        params.attackPrize * params.numServices
+                        ? "bg-solana-green"
+                        : results.optimal.robustnessAtOptimal >
+                          params.attackPrize
+                        ? "bg-amber-400"
+                        : "bg-red-500"
+                    )}
+                    initial={{ width: 0 }}
+                    animate={{
+                      width: `${Math.min(100, (results.optimal.robustnessAtOptimal / (params.attackPrize * params.numServices)) * 100)}%`,
+                    }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                  />
+                </div>
+              </Card>
+            </motion.div>
+          )}
         </motion.div>
 
         {/* Charts Area */}
@@ -302,7 +417,7 @@ export default function AnalyzerPage() {
         >
           {/* Figure Tabs */}
           <div className="flex flex-wrap gap-2">
-            {mockFigures.map((fig) => (
+            {figures.map((fig) => (
               <button
                 key={fig.id}
                 onClick={() => setActiveFigure(fig.id)}
@@ -313,117 +428,269 @@ export default function AnalyzerPage() {
                     : "bg-surface-2 text-zinc-500 border border-transparent hover:text-zinc-300 hover:border-zinc-700"
                 )}
               >
-                {fig.title.split(":")[0]}
+                {fig.short}
               </button>
             ))}
           </div>
 
           {/* Chart Display */}
-          <Card className="min-h-[400px] relative overflow-hidden">
-            {mockFigures.map((fig) => (
-              <div
-                key={fig.id}
-                className={cn(
-                  "absolute inset-0 p-6 transition-opacity duration-300",
-                  activeFigure === fig.id
-                    ? "opacity-100"
-                    : "opacity-0 pointer-events-none"
+          <Card className="min-h-[480px] relative overflow-hidden">
+            {/* Figure 3 */}
+            <div
+              className={cn(
+                "transition-opacity duration-300",
+                activeFigure === "fig3"
+                  ? "opacity-100"
+                  : "opacity-0 pointer-events-none absolute inset-0"
+              )}
+            >
+              <h3 className="text-base font-semibold text-purple-400">
+                {figures[0].title}
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500 max-w-lg">
+                {figures[0].description}
+              </p>
+              <div className="mt-4 h-[360px]">
+                {!results ? (
+                  <EmptyChart />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={results.figure3}
+                      margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(63, 63, 70, 0.3)"
+                      />
+                      <XAxis
+                        dataKey="degree"
+                        stroke="#71717a"
+                        fontSize={11}
+                        label={{
+                          value: "Restaking Degree (d)",
+                          position: "insideBottom",
+                          offset: -5,
+                          style: { fill: "#a1a1aa", fontSize: 11 },
+                        }}
+                      />
+                      <YAxis
+                        stroke="#71717a"
+                        fontSize={11}
+                        tickFormatter={(v: number) => formatNumber(v)}
+                        label={{
+                          value: "Min Stake (SOL)",
+                          angle: -90,
+                          position: "insideLeft",
+                          offset: 10,
+                          style: { fill: "#a1a1aa", fontSize: 11 },
+                        }}
+                      />
+                      <Tooltip
+                        {...tooltipStyle}
+                        formatter={(value: number) => [
+                          `${formatNumber(value)} SOL`,
+                          "Min Stake",
+                        ]}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="minStake"
+                        name="Minimum Stake"
+                        stroke={chartColors.primary}
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: chartColors.primary }}
+                        activeDot={{ r: 5, fill: chartColors.primary }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 )}
-              >
-                <h3 className={cn("text-base font-semibold", fig.color)}>
-                  {fig.title}
-                </h3>
-                <p className="mt-2 text-xs text-zinc-500 max-w-lg">
-                  {fig.description}
-                </p>
-
-                {/* Chart placeholder with grid */}
-                <div className="mt-6 relative h-[280px] rounded-lg border border-zinc-800/40 bg-surface-2/30 overflow-hidden">
-                  {/* Grid lines */}
-                  <svg
-                    className="absolute inset-0 h-full w-full"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    {/* Horizontal grid */}
-                    {[0.2, 0.4, 0.6, 0.8].map((y) => (
-                      <line
-                        key={`h-${y}`}
-                        x1="0"
-                        y1={`${y * 100}%`}
-                        x2="100%"
-                        y2={`${y * 100}%`}
-                        stroke="rgba(39, 39, 42, 0.4)"
-                        strokeWidth="1"
-                      />
-                    ))}
-                    {/* Vertical grid */}
-                    {[0.2, 0.4, 0.6, 0.8].map((x) => (
-                      <line
-                        key={`v-${x}`}
-                        x1={`${x * 100}%`}
-                        y1="0"
-                        x2={`${x * 100}%`}
-                        y2="100%"
-                        stroke="rgba(39, 39, 42, 0.4)"
-                        strokeWidth="1"
-                      />
-                    ))}
-                    {/* Placeholder curve */}
-                    <path
-                      d="M 40 240 Q 150 220 200 160 T 350 80 Q 400 60 500 50"
-                      fill="none"
-                      stroke="rgba(153, 69, 255, 0.5)"
-                      strokeWidth="2"
-                    />
-                    <path
-                      d="M 40 240 Q 150 220 200 160 T 350 80 Q 400 60 500 50 L 500 280 L 40 280 Z"
-                      fill="url(#chartGradient)"
-                      opacity="0.15"
-                    />
-                    <defs>
-                      <linearGradient
-                        id="chartGradient"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#9945FF" />
-                        <stop offset="100%" stopColor="transparent" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="rounded-lg border border-zinc-700/50 bg-surface-1/80 px-4 py-3 text-center backdrop-blur">
-                      <BarChart3 className="mx-auto mb-1 h-5 w-5 text-zinc-500" />
-                      <p className="text-xs text-zinc-500">
-                        Recharts visualization will render here
-                      </p>
-                      <p className="text-[10px] text-zinc-600">
-                        Connected to SDK analysis functions
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Parameter readout */}
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
-                    n={params.n}
-                  </span>
-                  <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
-                    m={params.m}
-                  </span>
-                  <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
-                    d*={params.d_star}
-                  </span>
-                  <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
-                    slash={params.slash_fraction}
-                  </span>
-                </div>
               </div>
-            ))}
+            </div>
+
+            {/* Figure 5 */}
+            <div
+              className={cn(
+                "transition-opacity duration-300",
+                activeFigure === "fig5"
+                  ? "opacity-100"
+                  : "opacity-0 pointer-events-none absolute inset-0"
+              )}
+            >
+              <h3 className="text-base font-semibold text-green-400">
+                {figures[1].title}
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500 max-w-lg">
+                {figures[1].description}
+              </p>
+              <div className="mt-4 h-[360px]">
+                {!results ? (
+                  <EmptyChart />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={results.figure5}
+                      margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(63, 63, 70, 0.3)"
+                      />
+                      <XAxis
+                        dataKey="degree"
+                        stroke="#71717a"
+                        fontSize={11}
+                        label={{
+                          value: "Restaking Degree (d)",
+                          position: "insideBottom",
+                          offset: -5,
+                          style: { fill: "#a1a1aa", fontSize: 11 },
+                        }}
+                      />
+                      <YAxis
+                        stroke="#71717a"
+                        fontSize={11}
+                        tickFormatter={(v: number) => v.toFixed(3)}
+                        label={{
+                          value: "Failure Threshold",
+                          angle: -90,
+                          position: "insideLeft",
+                          offset: 10,
+                          style: { fill: "#a1a1aa", fontSize: 11 },
+                        }}
+                      />
+                      <Tooltip
+                        {...tooltipStyle}
+                        formatter={(value: number) => [
+                          value.toFixed(4),
+                          "Failure Threshold",
+                        ]}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="failureThreshold"
+                        name="Failure Threshold"
+                        stroke={chartColors.secondary}
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: chartColors.secondary }}
+                        activeDot={{ r: 5, fill: chartColors.secondary }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Figure 6 */}
+            <div
+              className={cn(
+                "transition-opacity duration-300",
+                activeFigure === "fig6"
+                  ? "opacity-100"
+                  : "opacity-0 pointer-events-none absolute inset-0"
+              )}
+            >
+              <h3 className="text-base font-semibold text-cyan-400">
+                {figures[2].title}
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500 max-w-lg">
+                {figures[2].description}
+              </p>
+              <div className="mt-4 h-[360px]">
+                {!results ? (
+                  <EmptyChart />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={results.figure6}
+                      margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(63, 63, 70, 0.3)"
+                      />
+                      <XAxis
+                        dataKey="degree"
+                        stroke="#71717a"
+                        fontSize={11}
+                        label={{
+                          value: "Restaking Degree (d)",
+                          position: "insideBottom",
+                          offset: -5,
+                          style: { fill: "#a1a1aa", fontSize: 11 },
+                        }}
+                      />
+                      <YAxis
+                        stroke="#71717a"
+                        fontSize={11}
+                        tickFormatter={(v: number) => v.toFixed(3)}
+                        label={{
+                          value: "Failure Threshold",
+                          angle: -90,
+                          position: "insideLeft",
+                          offset: 10,
+                          style: { fill: "#a1a1aa", fontSize: 11 },
+                        }}
+                      />
+                      <Tooltip
+                        {...tooltipStyle}
+                        formatter={(value: number, name: string) => [
+                          value.toFixed(4),
+                          name,
+                        ]}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="withoutBase"
+                        name="Without Base Service"
+                        stroke={chartColors.primary}
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: chartColors.primary }}
+                        activeDot={{ r: 5, fill: chartColors.primary }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="withBase"
+                        name="With Base Service"
+                        stroke={chartColors.tertiary}
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: chartColors.tertiary }}
+                        activeDot={{ r: 5, fill: chartColors.tertiary }}
+                        strokeDasharray="5 3"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Parameter readout */}
+            <div className="mt-4 flex flex-wrap gap-3">
+              <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
+                n={params.numValidators}
+              </span>
+              <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
+                m={params.numServices}
+              </span>
+              <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
+                sigma={params.stakePerValidator}
+              </span>
+              <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
+                pi={params.attackPrize}
+              </span>
+              <span className="rounded bg-surface-2 px-2 py-1 text-[10px] font-mono text-zinc-500">
+                maxDeg={params.maxDegree}
+              </span>
+            </div>
           </Card>
 
           {/* Analysis Insights */}
@@ -441,10 +708,25 @@ export default function AnalyzerPage() {
                       Security Amplification
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      With d*={params.d_star}, the effective security is amplified
-                      by {(params.d_star * 0.8).toFixed(1)}x compared to
-                      isolated staking. Each SOL staked provides security to{" "}
-                      {params.d_star} services simultaneously.
+                      {results ? (
+                        <>
+                          At optimal d*={results.optimal.optimalDegree}, the
+                          network requires{" "}
+                          {formatNumber(results.optimal.robustnessAtOptimal)} SOL
+                          to attack versus{" "}
+                          {formatNumber(params.attackPrize * params.numServices)}{" "}
+                          SOL total prize.{" "}
+                          {results.optimal.robustnessAtOptimal >
+                          params.attackPrize * params.numServices
+                            ? "Attack is unprofitable."
+                            : "Consider increasing validator stake."}
+                        </>
+                      ) : (
+                        <>
+                          Click &quot;Compute Analysis&quot; to see how elastic
+                          restaking amplifies security across the network.
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -460,19 +742,23 @@ export default function AnalyzerPage() {
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
                   <div>
                     <p className="text-sm font-medium text-zinc-200">
-                      Cascade Risk
+                      Degree Sensitivity
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      At slash_fraction={params.slash_fraction}, the maximum
-                      cascade depth is{" "}
-                      {Math.ceil(params.d_star * params.slash_fraction * 3)}{" "}
-                      hops. Risk is{" "}
-                      {params.slash_fraction > 0.3
-                        ? "elevated"
-                        : params.slash_fraction > 0.15
-                        ? "moderate"
-                        : "low"}
-                      .
+                      {results ? (
+                        <>
+                          The optimal degree d*={results.optimal.optimalDegree}{" "}
+                          balances security amplification against concentration
+                          risk. Over-restaking (d &gt; d*) reduces the attack
+                          cost as validators become correlated across too many
+                          services.
+                        </>
+                      ) : (
+                        <>
+                          Tune parameters and compute to analyze the tradeoff
+                          between restaking breadth and concentration risk.
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -480,6 +766,22 @@ export default function AnalyzerPage() {
             </motion.div>
           </div>
         </motion.div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyChart() {
+  return (
+    <div className="flex h-full items-center justify-center rounded-lg border border-zinc-800/40 bg-surface-2/30">
+      <div className="text-center">
+        <BarChart3 className="mx-auto mb-2 h-8 w-8 text-zinc-600" />
+        <p className="text-sm text-zinc-500">
+          Configure parameters and click Compute
+        </p>
+        <p className="mt-1 text-[10px] text-zinc-600">
+          Charts render real data from the analyzer package
+        </p>
       </div>
     </div>
   );
