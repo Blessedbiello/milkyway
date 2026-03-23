@@ -43,14 +43,6 @@ pub struct InitializeNetwork<'info> {
 }
 
 pub fn handler(ctx: Context<InitializeNetwork>) -> Result<()> {
-    // Validate that stake and reward mints are distinct — conflating them would
-    // create ambiguous accounting in reward distribution.
-    require_keys_neq!(
-        ctx.accounts.stake_mint.key(),
-        ctx.accounts.reward_mint.key(),
-        ElasticRestakingError::InvalidConfiguration
-    );
-
     let config = &mut ctx.accounts.network_config;
 
     config.authority = ctx.accounts.authority.key();

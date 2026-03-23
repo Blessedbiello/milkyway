@@ -91,68 +91,58 @@ async function main() {
     }
   }
 
-  // === Create 6 Validators with deposits ===
-  const validators: Keypair[] = [];
+  // === Create validator using the payer wallet (avoids airdrop rate limits) ===
+  const validators = [payer];
   const depositAmount = 100_000_000; // 100 tokens (6 decimals)
 
-  for (let i = 0; i < 6; i++) {
-    const validator = Keypair.generate();
-    validators.push(validator);
+  // Create token account for payer and mint stake tokens
+  const payerTokenAccount = await createAssociatedTokenAccount(
+    provider.connection,
+    payer,
+    stakeMint,
+    payer.publicKey
+  ).catch(async () => {
+    // Already exists, fetch it
+    return await getAssociatedTokenAddress(stakeMint, payer.publicKey);
+  });
 
-    // Airdrop SOL for tx fees
-    const sig = await provider.connection.requestAirdrop(
-      validator.publicKey,
-      2_000_000_000
+  await mintTo(
+    provider.connection,
+    payer,
+    stakeMint,
+    payerTokenAccount,
+    payer,
+    depositAmount
+  );
+
+  const [validatorPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("validator"), payer.publicKey.toBuffer()],
+    programId
+  );
+  const [stakeVault] = PublicKey.findProgramAddressSync(
+    [Buffer.from("stake_vault")],
+    programId
+  );
+
+  try {
+    await program.methods
+      .depositStake(new BN(depositAmount))
+      .accounts({
+        depositor: payer.publicKey,
+        networkConfig,
+        validatorState: validatorPda,
+        depositorTokenAccount: payerTokenAccount,
+        stakeVault,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    console.log(
+      `  Validator 0: ${payer.publicKey.toBase58().slice(0, 8)}... deposited ${depositAmount / 1_000_000} tokens`
     );
-    await provider.connection.confirmTransaction(sig);
-
-    // Create token account and mint stake tokens
-    const tokenAccount = await createAssociatedTokenAccount(
-      provider.connection,
-      payer,
-      stakeMint,
-      validator.publicKey
-    );
-
-    await mintTo(
-      provider.connection,
-      payer,
-      stakeMint,
-      tokenAccount,
-      payer,
-      depositAmount
-    );
-
-    const [validatorPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("validator"), validator.publicKey.toBuffer()],
-      programId
-    );
-    const [stakeVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("stake_vault")],
-      programId
-    );
-
-    try {
-      await program.methods
-        .depositStake(new BN(depositAmount))
-        .accounts({
-          depositor: validator.publicKey,
-          networkConfig,
-          validatorState: validatorPda,
-          depositorTokenAccount: tokenAccount,
-          stakeVault,
-          systemProgram: SystemProgram.programId,
-          tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .signers([validator])
-        .rpc();
-
-      console.log(
-        `  Validator ${i}: ${validator.publicKey.toBase58().slice(0, 8)}... deposited ${depositAmount / 1_000_000} tokens`
-      );
-    } catch (e: any) {
-      console.log(`  Validator ${i} error: ${e.message?.slice(0, 80)}`);
-    }
+  } catch (e: any) {
+    console.log(`  Validator 0 error: ${e.message?.slice(0, 80)}`);
   }
 
   // === Allocate to services (target d* = 2.0) ===
@@ -191,7 +181,6 @@ async function main() {
             allocation: allocationPda,
             systemProgram: SystemProgram.programId,
           })
-          .signers([validator])
           .rpc();
 
         console.log(
